@@ -1,0 +1,121 @@
+-- ==========================================================
+-- PART 1: FeePayments Table – Transactions & ACID
+-- ==========================================================
+
+-- Drop and recreate the FeePayments table
+DROP TABLE IF EXISTS FeePayments;
+
+CREATE TABLE FeePayments (
+    payment_id     INT PRIMARY KEY,
+    student_name   VARCHAR(100) NOT NULL,
+    amount         DECIMAL(10,2) NOT NULL CHECK (amount > 0),
+    payment_date   DATE NOT NULL
+);
+
+--------------------------------------------------------------
+-- A. Insert 5 Fee Payments (Atomic Insert)
+--------------------------------------------------------------
+START TRANSACTION;
+
+INSERT INTO FeePayments (payment_id, student_name, amount, payment_date) VALUES
+    (1, 'Ashish',  5000.00, '2024-06-01'),
+    (2, 'Smaran',  4500.00, '2024-06-02'),
+    (3, 'Vaibhav', 5500.00, '2024-06-03'),
+    (7, 'Sneha',   4700.00, '2024-06-04'),
+    (8, 'Arjun',   4900.00, '2024-06-05');
+
+COMMIT;
+
+SELECT * FROM FeePayments;
+
+--------------------------------------------------------------
+-- B. Demonstrate ROLLBACK (Failure: duplicate + negative)
+--------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE demo_partB()
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+    END;
+
+    START TRANSACTION;
+        INSERT INTO FeePayments VALUES (9, 'Kiran', 5200.00, '2024-06-06');
+        -- Invalid: Duplicate ID (1) + negative amount
+        INSERT INTO FeePayments VALUES (1, 'Neha', -3000.00, '2024-06-07');
+    COMMIT;
+END$$
+DELIMITER ;
+
+CALL demo_partB();
+DROP PROCEDURE demo_partB;
+
+-- Verify rollback (Kiran should NOT be present)
+SELECT * FROM FeePayments;
+
+--------------------------------------------------------------
+-- C. Partial Failure (One valid + one invalid)
+--------------------------------------------------------------
+DELIMITER $$
+
+CREATE PROCEDURE demo_partC()
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+    END;
+
+    START TRANSACTION;
+        INSERT INTO FeePayments VALUES (10, 'Ananya', 5100.00, '2024-06-08');
+        -- Invalid: NULL student_name
+        INSERT INTO FeePayments VALUES (11, NULL, 4200.00, '2024-06-09');
+    COMMIT;
+END$$
+DELIMITER ;
+
+CALL demo_partC();
+DROP PROCEDURE demo_partC;
+
+-- Verify rollback (Ananya should NOT be present)
+SELECT * FROM FeePayments;
+
+--------------------------------------------------------------
+-- D. Verify ACID Compliance
+--------------------------------------------------------------
+-- Valid transaction
+START TRANSACTION;
+    INSERT INTO FeePayments VALUES (12, 'Manish', 5300.00, '2024-06-10');
+COMMIT;
+
+-- Invalid transaction (Duplicate ID = 12)
+DELIMITER $$
+CREATE PROCEDURE demo_partD()
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+    END;
+
+    START TRANSACTION;
+        INSERT INTO FeePayments VALUES (12, 'Tina', 4700.00, '2024-06-11'); -- Duplicate
+    COMMIT;
+END$$
+DELIMITER ;
+
+CALL demo_partD();
+DROP PROCEDURE demo_partD;
+
+-- Final state of the table
+SELECT * FROM FeePayments ORDER BY payment_id;
+
+-- ==========================================================
+-- PART 2: StudentEnrollments Table – Transactions & Locks
+-- ==========================================================
+
+DROP TABLE IF EXISTS StudentEnrollments;
+
+CREATE TABLE StudentEnrollments (
+    enrollment_id  INT PRIMARY KEY,
+    student_name   VARCHAR(100) NOT NULL,
+    course_id      VARCH_
